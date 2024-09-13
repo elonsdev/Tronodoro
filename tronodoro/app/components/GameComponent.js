@@ -4,9 +4,11 @@ import Phaser from "phaser";
 class MainScene extends Phaser.Scene {
   constructor() {
     super({ key: "MainScene" });
-    this.isRaining = true;
+
+    this.isRaining = false;
     this.clockCenter = { x: 583, y: 160 }; // Position of the clock on the wall
     this.clockRadius = 70; // Size of the clock
+    this.gradientWidth = 600; // Width of the gradient (adjust as needed)
   }
 
   preload() {
@@ -15,9 +17,30 @@ class MainScene extends Phaser.Scene {
     this.load.image("pomodoro-icon", "/images/pomodoro-icon.png");
     this.load.image("music-icon", "/images/music-icon.png");
     this.load.image("raindrop", "/images/raindrop.png");
+    this.load.gradientTexture;
   }
 
   create() {
+    this.lights.enable;
+
+    this.gradientTexture = this.createGradientTexture();
+    this.gradientSprite = this.add
+      .image(0, 0, this.gradientTexture)
+      .setOrigin(0, 0);
+
+    // Rain particles
+    this.rainEmitter = this.add.particles(0, 0, "raindrop", {
+      x: { min: 200, max: 400 },
+      y: 50,
+      quantity: 1,
+      lifespan: 2800,
+      speedY: { min: 100, max: 150 },
+      scale: { start: 0.2, end: 0.4 },
+      alpha: { start: 0.8, end: 0.3 },
+      blendMode: "NORMAL",
+    });
+    this.rainEmitter.stop();
+
     // Background
     this.background = this.add
       .image(0, 0, "background")
@@ -35,6 +58,8 @@ class MainScene extends Phaser.Scene {
         0
       )
       .setOrigin(0, 0);
+
+    this.light = this.add.pointlight(1007, 400, 0xfaf9f3, 350, 0.8, 0.03);
 
     // UI Icons
     const taskIcon = this.add.image(50, 50, "task-icon").setInteractive();
@@ -59,19 +84,6 @@ class MainScene extends Phaser.Scene {
     pomodoroIcon.on("pointerdown", () => this.startPomodoro());
     musicIcon.on("pointerdown", () => this.events.emit("toggleMusic"));
 
-    // Rain particles
-    this.rainEmitter = this.add.particles(0, 0, "raindrop", {
-      x: { min: 400, max: 600 },
-      y: 50,
-      quantity: 1,
-      lifespan: 2000,
-      speedY: { min: 100, max: 150 },
-      scale: { start: 0.2, end: 0.4 },
-      alpha: { start: 0.8, end: 0.3 },
-      blendMode: "NORMAL",
-    });
-    this.rainEmitter.start();
-
     // Debug text
     this.debugText = this.add.text(10, this.game.scale.height - 30, "", {
       fontSize: "16px",
@@ -90,12 +102,12 @@ class MainScene extends Phaser.Scene {
     });
 
     // Toggle rain every 10 seconds
-    this.time.addEvent({
+    /* this.time.addEvent({
       delay: 10000,
       callback: this.toggleRain,
       callbackScope: this,
       loop: true,
-    });
+    }); */
 
     // Initial time update
     this.updateTime();
@@ -138,9 +150,29 @@ class MainScene extends Phaser.Scene {
       .setLineWidth(2);
   }
 
+  createGradientTexture() {
+    const texture = this.textures.createCanvas(
+      "gradient",
+      this.gradientWidth,
+      this.game.scale.height
+    );
+    const context = texture.getContext();
+    const grd = context.createLinearGradient(0, 0, this.gradientWidth, 0);
+
+    grd.addColorStop(0, "rgba(255, 255, 255, 1)");
+    grd.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+    context.fillStyle = grd;
+    context.fillRect(0, 0, this.gradientWidth, this.game.scale.height);
+
+    texture.refresh();
+
+    return texture;
+  }
+
   updateTime() {
     const now = new Date();
-    const hours = now.getHours();
+    const hours = now.getHours() - 12;
     const minutes = now.getMinutes();
     const seconds = now.getSeconds();
 
@@ -172,6 +204,45 @@ class MainScene extends Phaser.Scene {
     // Update day/night cycle based on current time
     const totalMinutes = hours * 60 + minutes;
     const timeOfDay = totalMinutes / 1440; // 1440 minutes in a day
+
+    // Calculate colors for the gradient
+    let skyColor;
+    if (hours >= 22 || hours < 4) {
+      // Night (10 PM to 4 AM)
+      skyColor = Phaser.Display.Color.ValueToColor("#001a33");
+    } else if (hours >= 4 && hours < 6) {
+      // Dawn (4 AM to 6 AM)
+      skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.ValueToColor("#001a33"),
+        Phaser.Display.Color.ValueToColor("#87ceeb"),
+        120,
+        Math.min(((totalMinutes - 240) / 120) * 100, 100)
+      );
+    } else if (hours >= 6 && hours < 18) {
+      // Day (6 AM to 6 PM)
+      skyColor = Phaser.Display.Color.ValueToColor("#87ceeb");
+    } else if (hours >= 18 && hours < 22) {
+      // Dusk (6 PM to 10 PM)
+      skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.ValueToColor("#87ceeb"),
+        Phaser.Display.Color.ValueToColor("#001a33"),
+        240,
+        Math.min(((totalMinutes - 1080) / 240) * 100, 100)
+      );
+    }
+
+    // Update the gradient texture
+    const texture = this.textures.get("gradient");
+    const context = texture.getContext();
+    const grd = context.createLinearGradient(0, 0, this.gradientWidth, 0);
+
+    grd.addColorStop(0, skyColor.rgba);
+    grd.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+    context.fillStyle = grd;
+    context.fillRect(0, 0, this.gradientWidth, this.game.scale.height);
+
+    texture.refresh();
 
     // Calculate darkness
     let darkness;
